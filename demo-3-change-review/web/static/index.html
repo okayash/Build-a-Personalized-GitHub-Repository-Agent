@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Change Review</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f5f5f5; }
+    .container { max-width: 1000px; margin: auto; background: white; padding: 20px; min-height: 100vh; }
+    h1 { color: #333; }
+    .input-section { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ddd; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; font-weight: bold; color: #333; }
+    input[type="text"], textarea, select { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+    textarea { resize: vertical; min-height: 80px; }
+    button { padding: 10px 20px; margin-right: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    button:hover { background: #0056b3; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    button.approve { background: #28a745; }
+    button.approve:hover { background: #218838; }
+    button.reject { background: #dc3545; }
+    button.reject:hover { background: #c82333; }
+    #output { margin-top: 20px; white-space: pre-wrap; font-family: monospace; max-height: 400px; overflow-y: auto; background: #f5f5f5; padding: 15px; border-radius: 4px; border: 1px solid #ddd; }
+    .draft-section { margin-top: 20px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; }
+    .draft-section.issue { background: #fff3cd; border-left-color: #ffc107; }
+    .draft-section.pr { background: #cfe2ff; border-left-color: #0d6efd; }
+    .approval-buttons { margin-top: 10px; }
+    .log-entry { padding: 5px 0; }
+    .log-entry.agent-start { font-weight: bold; color: #0056b3; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Change Review & Improvement Agent</h1>
+    <p>Analyze git changes or improve existing GitHub issues/PRs.</p>
+    
+    <div class="input-section">
+      <div class="form-group">
+        <label>Mode</label>
+        <select id="mode" onchange="switchMode()">
+          <option value="review">Review Git Changes</option>
+          <option value="improve">Improve Issue/PR</option>
+        </select>
+      </div>
+
+      <!-- Review Mode -->
+      <div id="reviewMode">
+        <div class="form-group">
+          <label>Commit Range (optional, e.g., HEAD~1..HEAD)</label>
+          <input type="text" id="commitRange" placeholder="Leave empty for current branch">
+        </div>
+
+        <div class="form-group">
+          <label>Draft Type (optional)</label>
+          <select id="draftType">
+            <option value="">None</option>
+            <option value="issue">Issue</option>
+            <option value="pr">Pull Request</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="instructionGroup" style="display: none;">
+          <label>Explicit Instruction (for PR drafting from scratch)</label>
+          <textarea id="instruction" placeholder="e.g., 'Create a PR to refactor duplicated pricing logic.'"></textarea>
+        </div>
+
+        <button onclick="startReview()">Review Changes</button>
+      </div>
+
+      <!-- Improve Mode -->
+      <div id="improveMode" style="display: none;">
+        <div class="form-group">
+          <label>Target Type</label>
+          <select id="targetType">
+            <option value="issue">Issue</option>
+            <option value="pr">Pull Request</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Issue/PR ID (e.g., "test-issue-1" for demo)</label>
+          <input type="text" id="targetId" placeholder="GitHub issue/PR ID or test ID">
+        </div>
+
+        <button onclick="startImprove()">Analyze & Improve</button>
+      </div>
+    </div>
+
+    <div id="output"></div>
+    <div id="draftSection"></div>
+  </div>
+
+  <script>
+    let eventSource;
+    let currentReport = null;
+
+    function switchMode() {
+      const mode = document.getElementById('mode').value;
+      document.getElementById('reviewMode').style.display = mode === 'review' ? 'block' : 'none';
+      document.getElementById('improveMode').style.display = mode === 'improve' ? 'block' : 'none';
+      document.getElementById('output').textContent = '';
+      document.getElementById('draftSection').innerHTML = '';
+    }
+
+    // Show instruction field only when PR is selected
+    document.getElementById('draftType').addEventListener('change', function() {
+      const instructionGroup = document.getElementById('instructionGroup');
+      if (this.value === 'pr') {
+        instructionGroup.style.display = 'block';
+      } else {
+        instructionGroup.style.display = 'none';
+      }
+    });
+
+    async function startReview() {
+      const commitRange = document.getElementById('commitRange').value;
+      const draftType = document.getElementById('draftType').value || null;
+      const instruction = document.getElementById('instruction').value || null;
+
+      const requestBody = { 
+        commit_range: commitRange || null,
+        draft_type: draftType,
+        instruction: instruction 
+      };
+
+      const response = await fetch('/api/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+      const { job_id } = await response.json();
+
+      document.getElementById('output').textContent = 'Analyzing changes...\n';
+      document.getElementById('draftSection').textContent = '';
+
+      connectStream(job_id);
+    }
+
+    async function startImprove() {
+      const targetType = document.getElementById('targetType').value;
+      const targetId = document.getElementById('targetId').value;
+
+      if (!targetId) {
+        alert('Please enter an Issue/PR ID');
+        return;
+      }
+
+      const requestBody = targetType === 'issue' 
+        ? { issue_id: targetId }
+        : { pr_id: targetId };
+
+      const response = await fetch('/api/improve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        alert('Error: ' + error.error);
+        return;
+      }
+
+      const { job_id } = await response.json();
+      document.getElementById('output').textContent = 'Analyzing and improving...\n';
+      document.getElementById('draftSection').textContent = '';
+
+      connectStream(job_id);
+    }
+
+    function connectStream(jobId) {
+      eventSource = new EventSource(`/api/stream/${jobId}`);
+      eventSource.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        const output = document.getElementById('output');
+
+        if (data.type === 'log') {
+          let logEntry = `[${new Date().toLocaleTimeString()}] ${data.agent}: ${data.message}\n`;
+          output.textContent += logEntry;
+          output.scrollTop = output.scrollHeight;
+        } else if (data.type === 'agent_start') {
+          let logEntry = `\n=== ${data.agent} ===\n`;
+          output.textContent += logEntry;
+          output.scrollTop = output.scrollHeight;
+        } else if (data.type === 'done') {
+          currentReport = data.report;
+          output.textContent += '\n✓ Complete\n';
+          showResults(data.report);
+          eventSource.close();
+        } else if (data.type === 'error') {
+          output.textContent += `\n✗ Error: ${data.message}\n`;
+          eventSource.close();
+        }
+      };
+    }
+
+    function showResults(report) {
+      const draftSection = document.getElementById('draftSection');
+      
+      // Check if this is an improvement report or a review report
+      if (report.critique) {
+        showImprovementResults(report);
+      } else if (report.issue_draft || report.pr_draft) {
+        showDraftResults(report);
+      } else {
+        showAnalysisResults(report);
+      }
+    }
+
+    function showAnalysisResults(report) {
+      const draftSection = document.getElementById('draftSection');
+      const riskColor = {"low": "green", "medium": "gold", "high": "red"}.get(report.risk.risk_level, "white");
+      
+      let html = `
+        <div class="analysis-section">
+          <h3>Analysis</h3>
+          <p><strong>Summary:</strong> ${report.analysis.summary}</p>
+          <p><strong>Change Type:</strong> ${report.categorization.change_type}</p>
+          <p><strong>Risk:</strong> <span style="color: ${riskColor}; font-weight: bold;">${report.risk.risk_level.toUpperCase()}</span></p>
+          <p><strong>Decision:</strong> ${report.decision.action}</p>
+        </div>
+      `;
+      draftSection.innerHTML = html;
+    }
+
+    function showDraftResults(report) {
+      const draftSection = document.getElementById('draftSection');
+      
+      if (report.issue_draft) {
+        const draft = report.issue_draft;
+        draftSection.innerHTML = `
+          <div class="draft-section issue">
+            <h2>Issue Draft (${report.approval_status})</h2>
+            <p><strong>Title:</strong> ${draft.title}</p>
+            <p><strong>Problem:</strong><br>${draft.problem_description}</p>
+            <p><strong>Evidence:</strong><br><code>${draft.evidence}</code></p>
+            <p><strong>Acceptance Criteria:</strong><br>
+              ${draft.acceptance_criteria.map(c => `<br>• ${c}`).join('')}
+            </p>
+            <p><strong>Risk Level:</strong> ${draft.risk_level}</p>
+          </div>
+        `;
+      } else if (report.pr_draft) {
+        const draft = report.pr_draft;
+        draftSection.innerHTML = `
+          <div class="draft-section pr">
+            <h2>PR Draft (${report.approval_status})</h2>
+            <p><strong>Title:</strong> ${draft.title}</p>
+            <p><strong>Summary:</strong><br>${draft.summary}</p>
+            <p><strong>Files Affected:</strong><br>
+              ${draft.files_affected.map(f => `<br>• ${f}`).join('') || 'None specified'}
+            </p>
+            <p><strong>Behavior Change:</strong><br>${draft.behavior_change}</p>
+            <p><strong>Test Plan:</strong><br>${draft.test_plan}</p>
+            <p><strong>Risk Level:</strong> ${draft.risk_level}</p>
+          </div>
+        `;
+      }
+    }
+
+    function showImprovementResults(report) {
+      const draftSection = document.getElementById('draftSection');
+      let html = '';
+
+      // Show critique
+      if (report.critique) {
+        const quality = report.critique.overall_quality;
+        const qualityColor = quality >= 70 ? 'green' : quality >= 50 ? 'gold' : 'red';
+        html += `
+          <div class="critique-section">
+            <h3>Critique (Quality: <span style="color: ${qualityColor}; font-weight: bold;">${quality}/100</span>)</h3>
+            <p><strong>Summary:</strong> ${report.critique.summary}</p>
+            ${report.critique.critiques.length > 0 ? `
+              <p><strong>Issues Found:</strong></p>
+              <ul>
+                ${report.critique.critiques.map(c => 
+                  `<li>[${c.severity}] ${c.category}: ${c.finding}</li>`
+                ).join('')}
+              </ul>
+            ` : '<p><em>No major issues found</em></p>'}
+          </div>
+        `;
+      }
+
+      // Show plan
+      if (report.plan) {
+        html += `
+          <div class="plan-section">
+            <h3>Improvement Plan</h3>
+            <p><strong>Rationale:</strong> ${report.plan.planning_rationale}</p>
+            <p><strong>Prioritized Improvements:</strong></p>
+            <ul>
+              ${report.plan.prioritized_improvements.map(imp => `<li>${imp}</li>`).join('')}
+            </ul>
+            <p><strong>Estimated Effort:</strong> ${report.plan.estimated_effort}</p>
+          </div>
+        `;
+      }
+
+      // Show improved issue
+      if (report.improved_issue) {
+        html += `
+          <div class="improved-section">
+            <h3>Improved Issue</h3>
+            <p><strong>New Title:</strong> ${report.improved_issue.new_title}</p>
+            <p><strong>Description:</strong><br>${report.improved_issue.new_description}</p>
+            <p><strong>Acceptance Criteria:</strong><br>
+              ${report.improved_issue.improved_acceptance_criteria.map(c => `<br>• ${c}`).join('')}
+            </p>
+            <p><strong>Evidence:</strong><br><code>${report.improved_issue.evidence}</code></p>
+            <p><strong>Risk Level:</strong> ${report.improved_issue.risk_level}</p>
+            <p><strong>Status:</strong> <strong style="color: ${report.approval_status === 'approved' ? 'green' : 'red'};">${report.approval_status.toUpperCase()}</strong></p>
+          </div>
+        `;
+      }
+
+      // Show improved PR
+      if (report.improved_pr) {
+        html += `
+          <div class="improved-section">
+            <h3>Improved PR</h3>
+            <p><strong>New Title:</strong> ${report.improved_pr.new_title}</p>
+            <p><strong>Description:</strong><br>${report.improved_pr.new_description}</p>
+            <p><strong>Behavior Change:</strong><br>${report.improved_pr.improved_behavior_change}</p>
+            <p><strong>Test Plan:</strong><br>${report.improved_pr.improved_test_plan}</p>
+            <p><strong>Breaking Changes Documented:</strong> ${report.improved_pr.breaking_changes_documented ? '✓ Yes' : '✗ No'}</p>
+            <p><strong>Risk Level:</strong> ${report.improved_pr.risk_level}</p>
+            <p><strong>Status:</strong> <strong style="color: ${report.approval_status === 'approved' ? 'green' : 'red'};">${report.approval_status.toUpperCase()}</strong></p>
+          </div>
+        `;
+      }
+
+      draftSection.innerHTML = html;
+    }
+  </script>
+</body>
+</html>
