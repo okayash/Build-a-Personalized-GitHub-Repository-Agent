@@ -1,0 +1,34 @@
+{
+  "draft_id": "fe3390b0",
+  "analysis": {
+    "issues": [],
+    "improvements": [],
+    "summary": "Instruction-based issue draft: Add rate limiting to login endpoint..."
+  },
+  "categorization": {
+    "change_type": "instruction",
+    "reasoning": "Draft created from explicit instruction, no code changes analyzed"
+  },
+  "risk": {
+    "risk_level": "medium",
+    "reasoning": "Risk assessment not performed for instruction-based drafts"
+  },
+  "decision": {
+    "action": "Create ISSUE",
+    "reasoning": "User requested issue creation via instruction"
+  },
+  "approval_status": "pending",
+  "issue_draft": {
+    "title": "Rate Limiting for Login Endpoint",
+    "problem_description": "The current implementation of the login endpoint does not have rate limiting in place, which could lead to brute-force attacks and abuse. Implementing rate limiting will help prevent these issues.",
+    "evidence": "No rate limiting is currently implemented on the /login endpoint.",
+    "acceptance_criteria": [
+      "The login endpoint will enforce a maximum of 5 requests per minute from a single IP address.",
+      "The login endpoint will return a 429 Too Many Requests error after reaching the rate limit.",
+      "The rate limiting will be reset after 15 minutes."
+    ],
+    "risk_level": "Medium",
+    "source": "instruction",
+    "instruction": "Add rate limiting to login endpoint"
+  }
+}

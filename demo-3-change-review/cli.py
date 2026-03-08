@@ -14,6 +14,7 @@ from rich.panel import Panel
 from rich.rule import Rule
 
 from approval_orchestrator import ApprovalOrchestrator
+from improve_orchestrator import ImprovementOrchestrator
 from models.schemas import FinalReport
 from orchestrator import Orchestrator
 
