@@ -23,9 +23,9 @@ Improve: Reviewer → Planner → Improver → Gatekeeper → Approval
 
 ## Setup
 
-1. Install dependencies: `pip install -r requirements.txt`
+1. Install dependencies (use Python 3): `python3 -m pip install -r requirements.txt`
 2. Set up Ollama: `ollama pull llama3.2:3b`
-3. Configure GitHub: Copy `.env.example` to `.env` and add your GitHub token and repository
+3. Configure GitHub: copy `.env.example` to `.env` and add your GitHub token and repository
 
 ## Usage
 
@@ -33,34 +33,34 @@ Improve: Reviewer → Planner → Improver → Gatekeeper → Approval
 
 ```bash
 # Review current branch changes
-python cli.py review
+python3 cli.py review
 
 # Review specific commit range
-python cli.py review --range HEAD~3..HEAD
+python3 cli.py review --range HEAD~3..HEAD
 
 # Draft an issue from analysis
-python cli.py review --draft issue
+python3 cli.py review --draft issue
 
 # Draft a PR from explicit instruction
-python cli.py draft pr --instruction "Add rate limiting to login endpoint"
+python3 cli.py draft pr --instruction "Add rate limiting to login endpoint"
 
 # List pending drafts
-python cli.py approve --list
+python3 cli.py approve --list
 
 # Review a draft
-python cli.py approve abc12345
+python3 cli.py approve abc12345
 
 # Approve and create GitHub item
-python cli.py approve abc12345 --yes
+python3 cli.py approve abc12345 --yes
 
 # Reject a draft
-python cli.py approve abc12345 --no
+python3 cli.py approve abc12345 --no
 
 # Improve existing issue
-python cli.py improve --issue 42
+python3 cli.py improve --issue 42
 
 # Improve existing PR
-python cli.py improve --pr 17
+python3 cli.py improve --pr 17
 ```
 
 ### Web UI
