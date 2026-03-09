@@ -122,6 +122,9 @@ def create_github_issue(title: str, body: str, labels: list = None) -> Optional[
     """
     Create a new GitHub issue.
 
+    For demo/testing: creates mock issue if GITHUB_TOKEN not set
+    For real GitHub: uses GitHub API
+
     Args:
         title: Issue title
         body: Issue body/description
@@ -130,6 +133,24 @@ def create_github_issue(title: str, body: str, labels: list = None) -> Optional[
     Returns:
         dict with issue details or None if failed
     """
+    # For demo/testing when no GitHub token is configured
+    if not config.GITHUB_TOKEN:
+        import time
+        mock_id = f"mock-issue-{int(time.time())}"
+        MOCK_ISSUES[mock_id] = {
+            "id": mock_id,
+            "title": title,
+            "body": body,
+        }
+        print(f"✓ Created mock issue (no GITHUB_TOKEN configured): {mock_id}")
+        return {
+            "id": mock_id,
+            "title": title,
+            "body": body,
+            "url": f"https://github.com/mock/{mock_id}",
+            "number": len(MOCK_ISSUES)
+        }
+
     try:
         repo = _get_repo()
         issue = repo.create_issue(
